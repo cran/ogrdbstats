@@ -106,13 +106,13 @@ generate_ogrdb_report = function(ref_filename, inferred_filename, species, filen
   }
 
   rd = read_input_files(ref_filename, inferred_filename, species, filename, chain, hap_gene, segment, chain_type, all_inferred)
-
-  file_prefix = basename(strsplit(filename, '.', fixed=TRUE)[[1]][1])
+  file_base = basename(filename)
+  file_splits = strsplit(file_base, '.', fixed=TRUE)[[1]]
+  file_prefix = paste(file_splits[1:length(file_splits)-1], sep='.', collapse='.')
   file_loc = dirname(filename)
 
-  report('writing genotype file')
   write_genotype_file(file.path(file_loc, paste0(file_prefix, '_ogrdb_report.csv')), segment, chain_type, rd$genotype)
-
+  report(paste0(file_prefix, '_ogrdb_report.csv'))
 
   all_inferred = FALSE
 
@@ -180,6 +180,14 @@ generate_ogrdb_report = function(ref_filename, inferred_filename, species, filen
 #' example_data = read_input_files(reference_set, inferred_set, 'Homosapiens',
 #'        repertoire, 'IGHV', NA, 'V', 'H', FALSE)
 read_input_files = function(ref_filename, inferred_filename, species, filename, chain, hap_gene, segment, chain_type, all_inferred) {
+  find_template = function(call) {
+    tem = ref_genes[call]
+    if(is.na(tem))
+      tem = inferred_seqs[call]
+
+    return(tem)
+  }
+
   if (basename(filename) == "ogrdbstats_example_repertoire.tsv") {
     report("Using cached example data")
     return(ogrdbstats::example_rep)
@@ -198,10 +206,15 @@ read_input_files = function(ref_filename, inferred_filename, species, filename, 
 
   report('reading input sequences')
   input_sequences = read_input_sequences(filename, segment, chain_type)
-  genotype_db = make_genotype_db(input_sequences, inferred_seqs, ref_genes)
+  input_sequences$SEG_REF_IMGT = sapply(input_sequences$SEG_CALL, find_template)
 
-  report('checking and fixing read alignment')
-  input_sequences = gap_input_sequences(input_sequences, inferred_seqs, ref_genes)
+  if (segment == 'V') {
+    report('checking and fixing read alignment')
+    input_sequences = gap_input_sequences(input_sequences, inferred_seqs, ref_genes)
+  }
+
+  report('determining genotype')
+  genotype_db = make_genotype_db(input_sequences, inferred_seqs, ref_genes)
 
   report('calculating haplotype details')
   haplo_details = calc_haplo_details(segment, input_sequences)
@@ -378,6 +391,17 @@ read_input_sequences = function(filename, segment, chain_type) {
       col_names = c(col_names, 'SEG_SEQ_START', 'SEG_SEQ_END', 'SEG_GERM_START', 'SEG_GERM_END')
     }
 
+    if(segment == 'V') {
+      # check that SEQUENCE_IMGT has gapped sequences, otherwise find the CDR3 start
+
+      t = grepl(".", s$sequence_alignment, fixed=TRUE)
+
+      if (length(t[t]) < nrow(s) / 2) {
+        req_names = c(req_names, 'cdr3_start', 'fwr1_start')
+        col_names = c(col_names, 'CDR3_START', 'FWR1_START')
+      }
+    }
+
     s = select(s, req_names)
     names(s) = col_names
 
@@ -386,11 +410,21 @@ read_input_sequences = function(filename, segment, chain_type) {
       s$SEG_GERM_LENGTH = s$SEG_GERM_END - s$SEG_GERM_START + 1
     }
 
+    if ('CDR3_START' %in% col_names) {
+      s$CDR3_START = s$CDR3_START - s$FWR1_START    # make them indeces into the V sequence
+      if (dimnames(sort(table(substring(s$SEQUENCE_IMGT, s$CDR3_START, s$CDR3_START+2)),decreasing=TRUE))[[1]][1] == 'TGT') {
+        # we've actually found the junction not the CDR3!
+        s$CDR3_START = s$CDR3_START + 3
+      }
+      s$JUNCTION_START = s$CDR3_START - 3
+      names(s)[names(s) == 'SEQUENCE_IMGT'] = 'SEQUENCE'
+    }
+
   } else if('V_gene' %in% names(s)) {
     # IgDiscover format
     #  s = uncount(s, count)  for consistency with IgDiscover results, count each unique record in the file only once, regardless of 'count'
 
-    # add a dummy D_CALL to light chane repertoires, for ease of processing
+    # add a dummy D_CALL to light chain repertoires, for ease of processing
 
     if(chain_type == 'L' && !('D_gene' %in% names(s))) {
       s$D_gene = ''
@@ -476,7 +510,7 @@ make_genotype_db = function(input_sequences, inferred_seqs, ref_genes) {
     report_warn(paste0("Warning: sequence(s) for allele(s) ", missing_alleles, " can't be found in the reference set or the novel alleles file.\n"))
   }
 
-  # CHeck that a reasonable number of genes in the reference set are not called in the sequence set
+  # Check that a reasonable number of genes in the reference set are not called in the sequence set
 
   unused_ref = length(setdiff(names(ref_genes), names(genotype_db)))
 
@@ -494,16 +528,6 @@ make_genotype_db = function(input_sequences, inferred_seqs, ref_genes) {
 #' @return a revised input_sequences structure, guaranteed to contain gapped sequences in SEQUENCE_IMGT
 #' @noRd
 gap_input_sequences = function(input_sequences, inferred_seqs, ref_genes) {
-  find_template = function(call) {
-    tem = ref_genes[call]
-    if(is.na(tem))
-      tem = inferred_seqs[call]
-
-    return(tem)
-  }
-
-  input_sequences$SEG_REF_IMGT = sapply(input_sequences$SEG_CALL, find_template)
-
   if(!('SEQUENCE_IMGT' %in% names(input_sequences))) {
     input_sequences$SEQUENCE_IMGT = mapply(imgt_gap, input_sequences$SEQUENCE,input_sequences$CDR3_IMGT, input_sequences$JUNCTION_START, input_sequences$SEG_REF_IMGT)
   } else {
@@ -552,6 +576,11 @@ calc_haplo_details = function(segment, input_sequences) {
         'X'
       }
     })
+
+  if (nrow(sa) == 0) {
+    return(list())
+  }
+
   sa$a_gene = factor(sa$a_gene, sort_alleles(unique(sa$a_gene)))
 
   su = select(sa, A_CALL, a_gene, a_allele)

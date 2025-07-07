@@ -15,7 +15,8 @@ generate_ogrdb_report(
   chain_type,
   plot_unmutated,
   all_inferred = FALSE,
-  format = "pdf"
+  format = "pdf",
+  custom_file_prefix = ""
 )
 }
 \arguments{
@@ -40,6 +41,8 @@ generate_ogrdb_report(
 \item{all_inferred}{Treat all alleles as novel}
 
 \item{format}{The format for the plot file ('pdf', 'html' or 'none')}
+
+\item{custom_file_prefix}{custom prefix to use for output files. If not specified, the prefix is taken from the input file name}
 }
 \value{
 None

@@ -2,7 +2,7 @@ Package: ogrdbstats
 Type: Package
 Title: Analysis of Adaptive Immune Receptor Repertoire Germ Line
         Statistics
-Version: 0.5.2
+Version: 0.5.4
 Authors@R: person(
   "William", "Lees",
   email = "william@lees.org.uk",
@@ -28,11 +28,12 @@ Imports: dplyr (>= 0.8.3), ggplot2 (>= 3.2.1), magrittr, tigger (>=
         0.4), ComplexHeatmap, bookdown, scales,
 Suggests: knitr, rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2
 LazyData: true
 NeedsCompilation: no
-Packaged: 2024-11-02 14:56:39 UTC; William
-Author: William Lees [aut, cre] (<https://orcid.org/0000-0001-9834-6840>)
+Packaged: 2025-06-16 10:25:42 UTC; William
+Author: William Lees [aut, cre] (ORCID:
+    <https://orcid.org/0000-0001-9834-6840>)
 Maintainer: William Lees <william@lees.org.uk>
 Repository: CRAN
-Date/Publication: 2024-11-03 06:10:02 UTC
+Date/Publication: 2025-07-07 22:00:02 UTC
